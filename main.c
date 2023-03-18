@@ -108,7 +108,6 @@ int dataSize = 0;
   }
 
   ROUTE_END()
-  //fprintf(LogFile, "%s %s %s %s %i %i\n", dateTime, httpRequestType, clientIp, uri, code, dataSize);
-  fprintf(stderr, "%s %s %s %s %i %i\n", dateTime, httpRequestType, clientIp, uri, code, dataSize);
-  syslog(LOG_NOTICE, "%s %s %s %s %i %i\n", dateTime, httpRequestType, clientIp, uri, code, dataSize);
+  fprintf(LogFile, "%s %s %s %s %i %i\n", dateTime, httpRequestType, clientIp, uri, code, dataSize);
+  fprintf(stderr, "%s %s %s %s %i %i", dateTime, httpRequestType, clientIp, uri, code, dataSize);
 }
