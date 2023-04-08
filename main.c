@@ -10,6 +10,7 @@ char * LogDirectory;
 FILE* LogFile;
 #define INDEX_HTML "/index.html"
 #define NOT_FOUND_HTML "/404.html"
+#define AUTH_DATA "auth.html"
 
 int main(int c, char **v) {
   char *port = c <= 1 ? "8000" : v[1];
@@ -51,7 +52,7 @@ int read_file(const char *file_name, int* size) {
   return err;
 }
 
-void route(char* dateTime, char* httpRequestType, char* clientIp) {
+void route(char* dateTime, char* httpRequestType, char* clientIp, char* auth_data) {
 int code = 0;
 int dataSize = 0;
   ROUTE_START()
@@ -93,7 +94,17 @@ int dataSize = 0;
   GET(uri) {
     char file_name[255];
     sprintf(file_name, "%s%s", PublicDir, uri);
-
+    if (strncmp(&uri[strlen(uri)-strlen(AUTH_DATA)], AUTH_DATA, strlen(AUTH_DATA))==0)
+	{
+		fprintf(stderr, "Auth needed...\n");
+		if (auth_data == NULL)
+		{
+            fprintf(stderr, "(GET) Send 401...\n");
+			printf("HTTP/1.0 401 Unauthorized\n");
+			printf("WWW-Authenticate: Basic realm=\"Realm\"\n");
+		} else
+			fprintf(stderr, "Got Auth...%s\n", auth_data);
+	}
     if (file_exists(file_name)) {
       HTTP_200;
       code = 200;
@@ -109,5 +120,5 @@ int dataSize = 0;
 
   ROUTE_END()
   fprintf(LogFile, "%s %s %s %s %i %i\n", dateTime, httpRequestType, clientIp, uri, code, dataSize);
-  fprintf(stderr, "%s %s %s %s %i %i", dateTime, httpRequestType, clientIp, uri, code, dataSize);
+  fprintf(stderr, "%s %s %s %s %i %i\n", dateTime, httpRequestType, clientIp, uri, code, dataSize);
 }

@@ -12,10 +12,12 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <time.h>
+#include <fcntl.h>
 
 #define MAX_CONNECTIONS 1000
 #define BUF_SIZE 65535
 #define QUEUE_SIZE 1000000
+#define AUTH_DATA "auth.html"
 
 static int listenfd;
 int *clients;
@@ -162,6 +164,8 @@ static void uri_unescape(char *uri) {
 
 // client connection
 void respond(int slot, char* ip) {
+    char *auth_data, *line, *save_ptr;
+
   int rcvd;
 
   buf = malloc(BUF_SIZE);
@@ -217,6 +221,9 @@ void respond(int slot, char* ip) {
       if (t[1] == '\r' && t[2] == '\n')
         break;
     }
+    auth_data = request_header("Authorization");
+    fprintf(stderr,"%s \n", auth_data);
+
     t = strtok(NULL, "\r\n");
     t2 = request_header("Content-Length"); // and the related header if there is
     payload = t;
@@ -225,11 +232,11 @@ void respond(int slot, char* ip) {
     // bind clientfd to stdout, making it easier to write
     int clientfd = clients[slot];
     dup2(clientfd, STDOUT_FILENO);
+
     close(clientfd);
 
     // call router
-
-    route(dateTime, method, ip);
+    route(dateTime, method, ip, auth_data);
     // tidy up
     fflush(stdout);
     shutdown(STDOUT_FILENO, SHUT_WR);
@@ -238,3 +245,4 @@ void respond(int slot, char* ip) {
 
   free(buf);
 }
+
