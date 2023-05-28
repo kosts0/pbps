@@ -13,6 +13,7 @@
 #include <syslog.h>
 #include <time.h>
 #include <fcntl.h>
+#include <openssl/ssl.h>
 
 #define MAX_CONNECTIONS 1000
 #define BUF_SIZE 65535
@@ -22,9 +23,9 @@
 static int listenfd;
 int *clients;
 static void start_server(const char *);
-static void respond(int, char*);
+static void respond(int, char*,SSL*);
 
-static char *buf;
+static char buf[99999];
 
 // Client request
 char *method, // "GET" or "POST"
@@ -35,12 +36,12 @@ char *method, // "GET" or "POST"
 
 int payload_size;
 
-void serve_forever(const char *PORT) {
+void serve_forever(const char *PORT, SSL_CTX *ctx, SSL *ssl) {
   struct sockaddr_in clientaddr;
   socklen_t addrlen;
 
   int slot = 0;
-
+  int rc;
   /*printf("Server started %shttp://127.0.0.1:%s%s\n", "\033[92m", PORT,
          "\033[0m");*/
   // create shared memory for client slot array
@@ -59,27 +60,49 @@ void serve_forever(const char *PORT) {
   // ACCEPT connections
   while (1) {
     addrlen = sizeof(clientaddr);
+    char *ip = inet_ntoa(clientaddr.sin_addr);
     clients[slot] = accept(listenfd, (struct sockaddr *)&clientaddr, &addrlen);
 
-    char *ip = inet_ntoa(clientaddr.sin_addr);
 
-    if (clients[slot] < 0) {
-      perror("accept() error");
-      exit(1);
-    } else {
-      if (fork() == 0) {
-        close(listenfd);
-        respond(slot, ip);
-        close(clients[slot]);
-        clients[slot] = -1;
-        exit(0);
-      } else {
-        close(clients[slot]);
-      }
-    }
+    /* Получение SSL-обработчика из контекста сервера */
+    		if (!(ssl = SSL_new(ctx))) {
+      			fprintf(stderr, "%s", "Не могу получить ссылку на SSL-обработчик из SSL-контекста сервера\n");
+      			close(clients[slot]);
+      			continue;
+    		}
+    		/* Сопоставление установленного сетевого соединения с SSL-обработчиком*/
+    		SSL_set_fd(ssl, clients[slot]);
+	 	/* Выполнение согласования параметров SSL-соединения */
+    		if ((rc = SSL_accept(ssl)) != 1) {
+      			fprintf(stderr, "Согласование SSL-параметров не выполнено\n");
+      			if (rc != 0) {
+        			SSL_shutdown(ssl);
+      			}
+      			SSL_free(ssl);
+      			continue;
+    		} else {
+      			fprintf(stderr, "Согласование SSL-параметров выполнено успешно от: %s:%d\n", inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));
+      			if (clients[slot] < 0) {
+        			perror("accept() error");
+              fprintf(stderr, "accept() error");
+        			exit(1);
+      			} else {
+        			if (fork() == 0) {
+          				close(listenfd);
+          				respond(slot, ip, ssl);
+          				close(clients[slot]);
+          				clients[slot] = -1;
+          				exit(0);
+        			} else {
+          				close(clients[slot]);
+        			}
+      			}
+        }
 
     while (clients[slot] != -1)
       slot = (slot + 1) % MAX_CONNECTIONS;
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
   }
 }
 
@@ -118,6 +141,10 @@ void start_server(const char *port) {
     perror("listen() error");
     exit(1);
   }
+
+
+
+
 }
 
 // get request header by name
@@ -163,14 +190,16 @@ static void uri_unescape(char *uri) {
 }
 
 // client connection
-void respond(int slot, char* ip) {
+void respond(int slot, char* ip, SSL* ssl) {
     char *auth_data, *line, *save_ptr;
 
   int rcvd;
 
-  buf = malloc(BUF_SIZE);
-  rcvd = recv(clients[slot], buf, BUF_SIZE, 0);
-
+  //buf = malloc(BUF_SIZE);
+  memset( (void*)buf, (int)'\0', 99999 );
+  //rcvd = recv(clients[slot], buf, BUF_SIZE, 0);
+  rcvd = SSL_read(ssl, buf, 99999);
+  //fprintf(stderr, "rcvd : %i\n", rcvd);
   if (rcvd < 0) // receive error
     fprintf(stderr, ("recv() error\n"));
   else if (rcvd == 0) // receive socket closed
@@ -222,7 +251,7 @@ void respond(int slot, char* ip) {
         break;
     }
     auth_data = request_header("Authorization");
-    fprintf(stderr,"%s \n", auth_data);
+    //fprintf(stderr,"AuthData: %s \n", auth_data);
 
     t = strtok(NULL, "\r\n");
     t2 = request_header("Content-Length"); // and the related header if there is
@@ -230,19 +259,19 @@ void respond(int slot, char* ip) {
     payload_size = t2 ? atol(t2) : (rcvd - (t - buf));
 
     // bind clientfd to stdout, making it easier to write
-    int clientfd = clients[slot];
-    dup2(clientfd, STDOUT_FILENO);
+    //int clientfd = clients[slot];
+    //dup2(clientfd, STDOUT_FILENO);
 
-    close(clientfd);
+    //close(clientfd);
 
     // call router
-    route(dateTime, method, ip, auth_data);
+    route(dateTime, method, ip, auth_data, ssl);
     // tidy up
-    fflush(stdout);
+    //fflush(stdout);
     shutdown(STDOUT_FILENO, SHUT_WR);
     close(STDOUT_FILENO);
   }
 
-  free(buf);
+  //free(buf);
 }
 

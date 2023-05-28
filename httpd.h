@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <openssl/ssl.h>
 
 // Client request
 extern char *method, // "GET" or "POST"
@@ -15,7 +16,7 @@ extern char *method, // "GET" or "POST"
 extern int payload_size;
 
 // Server control functions
-void serve_forever(const char *PORT);
+void serve_forever(const char *PORT, SSL_CTX *ctx, SSL *ssl);
 
 char *request_header(const char *name);
 
@@ -30,12 +31,13 @@ header_t *request_headers(void);
 void route();
 //void route();
 // Response
-#define RESPONSE_PROTOCOL "HTTP/1.1"
+#define RESPONSE_PROTOCOL "TLS 1.3"
 
 #define HTTP_200 printf("%s 200 OK\n\n", RESPONSE_PROTOCOL)
 #define HTTP_201 printf("%s 201 Created\n\n", RESPONSE_PROTOCOL)
 #define HTTP_404 printf("%s 404 Not found\n\n", RESPONSE_PROTOCOL)
 #define HTTP_500 printf("%s 500 Internal Server Error\n\n", RESPONSE_PROTOCOL)
+#define HTTP_401 printf("%s 401 Unauthorized\n\n", RESPONSE_PROTOCOL)
 
 // some interesting macro for `route()`
 #define ROUTE_START() if (0) {
